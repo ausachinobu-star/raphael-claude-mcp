@@ -3,64 +3,72 @@ import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 
 function createServer() {
-	const server = new McpServer({
-		name: "Authless Calculator",
-		version: "1.0.0",
-	});
+  const server = new McpServer({
+    name: "Raphael Claude Bridge",
+    version: "1.0.0",
+  });
 
-	server.registerTool(
-		"add",
-		{ inputSchema: z.object({ a: z.number(), b: z.number() }) },
-		async ({ a, b }) => ({
-			content: [{ type: "text", text: String(a + b) }],
-		}),
-	);
+  server.registerTool(
+    "ask_claude",
+    {
+      description:
+        "Ask Claude a question and return Claude's response. Use this when the user explicitly asks to consult Claude or compare Claude's answer.",
+      inputSchema: z.object({
+        prompt: z.string().describe("The question or instruction to send to Claude"),
+      }),
+    },
+    async ({ prompt }) => {
+      const response = await fetch(
+        "https://raphael-claude-bridge.ausachinobu.workers.dev/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ prompt }),
+        }
+      );
 
-	server.registerTool(
-		"calculate",
-		{
-			inputSchema: z.object({
-				operation: z.enum(["add", "subtract", "multiply", "divide"]),
-				a: z.number(),
-				b: z.number(),
-			}),
-		},
-		async ({ operation, a, b }) => {
-			let result: number;
-			switch (operation) {
-				case "add":
-					result = a + b;
-					break;
-				case "subtract":
-					result = a - b;
-					break;
-				case "multiply":
-					result = a * b;
-					break;
-				case "divide":
-					if (b === 0)
-						return {
-							content: [
-								{
-									type: "text",
-									text: "Error: Cannot divide by zero",
-								},
-							],
-						};
-					result = a / b;
-					break;
-			}
-			return { content: [{ type: "text", text: String(result) }] };
-		},
-	);
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Claude bridge error: ${response.status} ${errorText}`,
+            },
+          ],
+          isError: true,
+        };
+      }
 
-	return server;
+      const data = (await response.json()) as {
+        answer?: string;
+        model?: string;
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: data.answer ?? "Claude returned no answer.",
+          },
+        ],
+      };
+    }
+  );
+
+  return server;
 }
 
-const handler = createMcpHandler(createServer);
-
 export default {
-	fetch(request: Request, env: Env, ctx: ExecutionContext) {
-		return handler(request, env, ctx);
-	},
-} satisfies ExportedHandler<Env>;
+  fetch(request: Request, env: unknown, ctx: ExecutionContext) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/mcp") {
+      return createMcpHandler(createServer())(request, env, ctx);
+    }
+
+    return new Response("Raphael Claude MCP Server", { status: 200 });
+  },
+};
