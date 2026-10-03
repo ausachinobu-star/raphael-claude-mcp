@@ -66,7 +66,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/mcp") {
-      return createMcpHandler(createServer())(request, env, ctx);
+      return createMcpHandler(createServer)(request, env, ctx);
     }
 
     return new Response("Raphael Claude MCP Server", { status: 200 });
